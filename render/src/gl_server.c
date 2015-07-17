@@ -148,9 +148,14 @@ int numMaterials = 0;
 
 void initIdentityMatf(float *mat)
 {
-    memset(mat, 0, sizeof(float) * 9);
     mat[0] = 1.0f;
+    mat[1] = 0.0f;
+    mat[2] = 0.0f;
+    mat[3] = 0.0f;
     mat[4] = 1.0f;
+    mat[5] = 0.0f;
+    mat[6] = 0.0f;
+    mat[7] = 0.0f;
     mat[8] = 1.0f;
 }
 
@@ -210,10 +215,15 @@ int parseTexture(cJSON *textureSpec, Texture *texture)
     float matRotZ[9];
     float matIdentity[9];
     
-    
     initIdentityMatf(matRotX);
     initIdentityMatf(matRotY);
     initIdentityMatf(matRotZ);
+    
+    printf("rot X %f, rot Y %f, rot Z %f\n", rotX, rotY, rotZ);
+    printf("matRotX is %f, %f, %f, %f,%f,%f,  %f,%f,%F\n", 
+          matRotX[0],  matRotX[1],  matRotX[2],
+          matRotX[3],  matRotX[4],  matRotX[5],
+          matRotX[6],  matRotX[7],  matRotX[8]);
     
     matRotX[4] = cos(rotX);
     matRotX[5] = sin(rotX);
@@ -229,11 +239,27 @@ int parseTexture(cJSON *textureSpec, Texture *texture)
     matRotZ[1] = sin(rotZ);
     matRotZ[3] = -sin(rotZ);
     matRotZ[4] = cos(rotZ);
+
+    printf("matRotX is %f, %f, %f, %f,%f,%f,  %f,%f,%F\n", 
+          matRotX[0],  matRotX[1],  matRotX[2],
+          matRotX[3],  matRotX[4],  matRotX[5],
+          matRotX[6],  matRotX[7],  matRotX[8]);
     
     // create rotation matrix out of rotX, rotY, and rot Z.
     float matOut[9], matOut2[9];
     matMultiplyf(matRotY, matRotX, matOut);
     matMultiplyf(matRotZ, matOut, matOut2);
+
+    printf("matOut is %f, %f, %f, %f,%f,%f,  %f,%f,%F\n", 
+          matOut[0],  matOut[1],  matOut[2],
+          matOut[3],  matOut[4],  matOut[5],
+          matOut[6],  matOut[7],  matOut[8]);
+
+
+    printf("matOut2 is %f, %f, %f, %f,%f,%f,  %f,%f,%F\n", 
+          matOut2[0],  matOut2[1],  matOut2[2],
+          matOut2[3],  matOut2[4],  matOut2[5],
+          matOut2[6],  matOut2[7],  matOut2[8]);
     
     memcpy(texture->transformMat, matOut2, sizeof(float) * 9);
 
@@ -335,205 +361,6 @@ ErrExit:
         cJSON_Delete(root);
     }
 
-
-#if 0
-   FILE *fp;
-   char *line = NULL;
-   size_t len = 0;
-   ssize_t read;
-
-   if (!filename) return;
-
-   // clear buffers
-   memset(materials,  0, MAX_MATERIALS * sizeof(Material));
-   memset(textures, 0, MAX_TEXTURES  * sizeof(Texture));
-   memset(modelParts, 0, MAX_PARTS     * sizeof(PartDefinition));
-   numMaterials = 0;
-   numTextures = 0;
-   numParts = 0;
- 
-   fp = fopen(filename, "r");
-   if (!fp) {
-     printf("Could not open %s\n", filename);
-     return;
-   }
-
-   int lineNo = 0;
-   SectionType sectionType = MATERIALS_SECTION; // Start with materials if no other header found
-
-   while (getline(&line, &len, fp) > 0){ // XXX am I leaking this line?
-      lineNo++;
-//      printf("parsing line number %d\n", lineNo);
-      int lineValid = TRUE;
-
-      // have line. Now parse.
-      char *tokenPtr = line;
-      
-      // skip whitespace at beginning of line
-      while (isspace(*tokenPtr)) {
-        tokenPtr++;
-      }
-      // check - is this a comment or the end of the line buffer?
-      if (*tokenPtr == '#' || *tokenPtr == '\0'){
-        continue;
-      }
-
-      // look for section headers. By default we start with the materials section
-      if (!strncasecmp(MATERIAL_HEADER, tokenPtr, strlen(MATERIAL_HEADER))) { 
-        sectionType = MATERIALS_SECTION;
-        continue;
-      } else if (!strncasecmp(PART_HEADER, tokenPtr, strlen(PART_HEADER))) {
-        sectionType = PARTS_SECTION;
-        continue;
-      } else if (!strncasecmp(TEXTURE_HEADER, tokenPtr, strlen(TEXTURE_HEADER))) {
-        sectionType = TEXTURES_SECTION;
-        continue;
-      } 
-
-      // load materials. Format of a material line is
-      // ambientr ambientg ambientg ambienta diffuser diffuseg diffuseb diffusea specularr specularg specularb speculara emissionr emissiong emissionb emissiona shininess
-      if (sectionType == MATERIALS_SECTION) {
-         if (numMaterials >= MAX_MATERIALS) {
-           printf("exceeds maximum number of materials, ignoring. Line number %d\n", lineNo);
-           continue;
-         }
-         
-         if (parseMaterial(tokenPtr, &materials[numMaterials])) {
-            numMaterials++;
-            continue;
-         }
-         
-         /*
-         // parse the material. Format is 17 floats, then a string (the name)
-         // And then I start wondering why I don't just define this in json, since I already
-         // have a json parser. Doh.
-         float materialTmp[17];
-         for (int i=0; i<17; i++) {
-            errno = 0;
-            materialTmp[i] = strtof(tokenPtr, &tokenPtr);
-            if (errno != 0) {
-              printf("error reading material idx %d on line %d, %s\n", i, lineNo, line);
-              lineValid = FALSE;
-              break;
-            }
-         }
-        
-         if (lineValid) {
-           for (int i=0; i<4; i++) {
-             materials[numMaterials].ambient[i] = materialTmp[i];
-           }
-           for (int i=0; i<4; i++) {
-             materials[numMaterials].diffuse[i] = materialTmp[4+i];
-           }
-           for (int i=0; i<4; i++) {
-             materials[numMaterials].specular[i] = materialTmp[8+i];
-           }
-           for (int i=0; i<4; i++) {
-             materials[numMaterials].emission[i] = materialTmp[12+i];
-           }
-           materials[numMaterials].shininess = materialTmp[16];
-    
-           // strip white space from around the name
-           char *name = tokenPtr;
-           while (isspace(*name)) {
-             name++;
-           }
-           char *nameEnd = name;
-           while (!isspace(*nameEnd) && *nameEnd != '\0'){
-             nameEnd++;
-           }
-           *nameEnd = '\0';
-           strncpy(materials[numMaterials].name, name, 16);
-           materials[numMaterials].name[15] = '\0';
-           printf("Found material %s on line %d\n", materials[numMaterials].name, lineNo);
-           numMaterials++;
-         }
-         */
-         
-      } else if (sectionType == PARTS_SECTION) { // Model parts information. Format is triangle start idx, materialName
-        if (numParts >= MAX_PARTS) {
-          printf("Too many parts in model, ignoring line %d\n", lineNo);
-          continue;
-        }
-
-        // okay - should be something to parse. 
-//        printf("Parsing part %d\n", numParts);
-
-        if (parsePart(tokenPtr, &modelParts[numParts])) {
-            numParts++;
-         }
-
-/*
-        errno = 0;
-        modelParts[numParts].startIdx = strtol(tokenPtr, &tokenPtr, 0); 
-        if (errno != 0) {
-          printf("invalid line %d\n", lineNo);
-          continue;
-        }
-
-        // now look for the name in the currently loaded materials
-        int foundMaterial = FALSE;
-        char *name = tokenPtr;
-        // remove white space around the name
-        while (isspace(*name)) {
-           name++;
-        }
-        char *nameEnd = name;
-        while (!isspace(*nameEnd) && *nameEnd != '\0'){
-          nameEnd++;
-        }
-        *nameEnd = '\0';
-
-        for (int i=0; i<numMaterials; i++) {
-           if (!strcasecmp(materials[i].name, name)) { // not handling white space at end of line well here...
-             modelParts[numParts].material = &materials[i];
-             foundMaterial = TRUE;
-             printf("Found material for part %d\n", numParts);
-             break;
-           }
-        }
-      
-        if (!foundMaterial) {
-          printf("Did not find material for part %d, line %d, looking for %s\n", numParts, lineNo, name); 
-          modelParts[numParts].material = NULL;
-        }
-        
-        numParts++;
-        */
-        
-      } else if (sectionType == TEXTURES_SECTION) {
-        printf("Found texture\n!");
-        if (numTextures >= MAX_TEXTURES) {
-          printf("Too many textures in model, ignoring line %d\n", lineNo);
-          continue;
-        }
-        
-        printf("Attempting to parse texture!\n");
-        Texture *tmpTexture = parseTexture(tokenPtr);
-        if (tmpTexture) {
-            printf("Attempting to save texture\n");
-            memcpy(&textures[numTextures++], tmpTexture, sizeof(Texture));
-        }
-        printf("done with texture\n");
-      } else {
-        printf("Found unknown section\n");
-        continue;
-        // Nop. Haven't defined this section type yet, will never get here.
-      }
-   }
-
-   free(line);
-   fclose(fp);
-   for (int i=0; i<numParts; i++) {
-       PartDefinition *part= &modelParts[i];
- //       printf("Part %d, name %s starts at vertex %ld, uses material %s and texture %s\n", 
-              i,
-              part->name ? part->name: "no name", 
-              part->startIdx, 
-              part->material ? part->material->name:"None", 
-              part->texture ? part->texture->name: "None");
-   }
-#endif //0
 }
 
 // Attempt to load material. Return TRUE or FALSE depending on whether material is loaded
@@ -759,15 +586,15 @@ void matMultiplyf(float *mat1, float *mat2, float *out)
 {
     out[0] = mat1[0]*mat2[0] + mat1[1]*mat2[3] + mat1[2]*mat2[6];
     out[1] = mat1[0]*mat2[1] + mat1[1]*mat2[4] + mat1[2]*mat2[7];
-    out[1] = mat1[0]*mat2[2] + mat1[1]*mat2[5] + mat1[2]*mat2[8];
+    out[2] = mat1[0]*mat2[2] + mat1[1]*mat2[5] + mat1[2]*mat2[8];
 
-    out[0] = mat1[3]*mat2[0] + mat1[4]*mat2[3] + mat1[5]*mat2[6];
-    out[1] = mat1[3]*mat2[1] + mat1[4]*mat2[4] + mat1[5]*mat2[7];
-    out[1] = mat1[3]*mat2[2] + mat1[4]*mat2[5] + mat1[5]*mat2[8];
+    out[3] = mat1[3]*mat2[0] + mat1[4]*mat2[3] + mat1[5]*mat2[6];
+    out[4] = mat1[3]*mat2[1] + mat1[4]*mat2[4] + mat1[5]*mat2[7];
+    out[5] = mat1[3]*mat2[2] + mat1[4]*mat2[5] + mat1[5]*mat2[8];
 
-    out[0] = mat1[6]*mat2[0] + mat1[7]*mat2[3] + mat1[8]*mat2[6];
-    out[1] = mat1[6]*mat2[1] + mat1[7]*mat2[4] + mat1[8]*mat2[7];
-    out[1] = mat1[6]*mat2[2] + mat1[7]*mat2[5] + mat1[8]*mat2[8];
+    out[6] = mat1[6]*mat2[0] + mat1[7]*mat2[3] + mat1[8]*mat2[6];
+    out[7] = mat1[6]*mat2[1] + mat1[7]*mat2[4] + mat1[8]*mat2[7];
+    out[8] = mat1[6]*mat2[2] + mat1[7]*mat2[5] + mat1[8]*mat2[8];
 }
 
 
@@ -1015,6 +842,7 @@ void render_triangles(float* triangles, int nTriangles)
     
     int start=0;
     
+    printf("nTriangles is %d\n", nTriangles);
     for(i = 0; i < nTriangles; i++){
       // Setup environment on part boundaries
       if (nextPart != NULL && nextPart->startIdx == i) {
@@ -1023,7 +851,7 @@ void render_triangles(float* triangles, int nTriangles)
         // Set textures
         if (nextPart->texture != NULL) {
             currentTexture = nextPart->texture;
-            printf("Using texture %s on part %s\n", currentTexture->name, nextPart->name);
+//            printf("Using texture %s on part %s\n", currentTexture->name, nextPart->name);
             glEnable(GL_TEXTURE_2D);
             //glClear(GL_COLOR_BUFFER_BIT);
             glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_DECAL);
@@ -1059,74 +887,65 @@ void render_triangles(float* triangles, int nTriangles)
       if (gUseNormals) {
         glNormal3fv(triangles+(12*i));
       }
-      /*
-      // Is this a new object (or part of an object)? Set material properties and texture
-      // properties if it is.
-      if (nextPart != NULL && nextPart->startIdx == i) {
-        //printf("Setting materials/texture for part %s, material %s\n", nextPart->name, nextPart->material? nextPart->material->name:"None");
-        glEnd();
-        // Set materials
-        if (nextPart->material == NULL) {
-          glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE,&tempMaterial[4]);
-        } else {
-          glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, nextPart->material->ambient);
-          glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, nextPart->material->diffuse);
-          glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, nextPart->material->specular);
-          glMaterialf(GL_FRONT, GL_SHININESS, nextPart->material->shininess * 128.0);
-          
-//          glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, nextPart->material->ambient);
-        }
-        // Set textures
-        if (nextPart->texture != NULL) {
-            currentTexture = nextPart->texture;
-            printf("Using texture %s on part %s\n", currentTexture->name, nextPart->name);
-            glBindTexture(GL_TEXTURE_2D, currentTexture->id);
-        } else {
-            currentTexture = NULL;
-        }
-        // re-init rendering engine
-        glBegin(GL_TRIANGLES);
-        // set up for next part
-        partIdx++;
-        if (partIdx < numParts) {
-          nextPart = &modelParts[partIdx];
-        } else {
-          nextPart = NULL;
-        }
-        
-      }*/
+
       if (currentTexture) {
         // coordinates of a point are...  Where are my modelworld matrices?
         // map texture projection into model space. Then v is model z / texture height + animation z factor
         float result[3];
 
-        matMultiply3vf(currentTexture->transformMat, triangles+(perTriangle*i) + vertexOffset, result);
-        // And u is atan2f(y, x) / 2PI * f, + animation spin factor
-//        glTexCoord2f(atan2f(result[1], result[0])/(2*PI*currentTexture->winding), result[2]); // no animation just yet
-        glTexCoord2f(0.01, 0.01); // no animation just yet
-        if (start++ <10) {
-            printf("tex coord is %f, %f\n", atan2f(result[1],result[0])/(2*PI*currentTexture->winding),result[2]); 
+        matMultiply3vf(currentTexture->transformMat, triangles+(perTriangle*i) + vertexOffset, result); // should do 4x4 so I can do translation XXX
+        if (i==19500) {
+        /*    printf("Transform mat is %f,%f,%f,   %f, %f, %f,  %f, %f,%f\n",
+                   currentTexture->transformMat[0], currentTexture->transformMat[1], currentTexture->transformMat[2],
+                   currentTexture->transformMat[3], currentTexture->transformMat[4], currentTexture->transformMat[5],
+                   currentTexture->transformMat[6], currentTexture->transformMat[7], currentTexture->transformMat[8]); */
+            printf("vertex is at %f %f %f, result is %f %f %f \n", 
+                   *(triangles+(perTriangle*i) + vertexOffset),
+                   *(triangles+(perTriangle*i) + vertexOffset + 1),
+                   *(triangles+(perTriangle*i) + vertexOffset + 2),
+                   result[0],
+                   result[1],
+                   result[2]);
         }
+        // And u is atan2f(y, x) / 2PI * f, + animation spin factor
+        float s = fmod(1,(atan2f(result[0], result[2])/(2*PI))*currentTexture->winding);
+        float t = result[1]/currentTexture->height;
+        if (i==19500) {
+            printf("s=%f, t=%f\n", s, t);
+        }
+        glTexCoord2f(s, t); // no animation just yet
+        //glTexCoord2f(0.01, 0.01); // no animation just yet
+/*        if (start++ <10) {
+            printf("tex coord is %f, %f\n", atan2f(result[1],result[0])/(2*PI*currentTexture->winding),result[2]); 
+        }*/
+        
       }
       glVertex3fv(triangles+(perTriangle*i) + vertexOffset);
       if (currentTexture) {
         float result[3];
         matMultiply3vf(currentTexture->transformMat, triangles+(perTriangle*i) + vertexOffset + 3, result);
 //        glTexCoord2f(atan2f(result[1], result[0])/(2*PI*currentTexture->winding), result[2]); // no animation just yet
-        glTexCoord2f(0.01, 0.02); // no animation just yet
-        if (start++ <10) {
+        float s = fmod(1,(atan2f(result[0], result[2])/(2*PI))*currentTexture->winding);
+        float t = result[1]/currentTexture->height;
+        glTexCoord2f(s, t); // no animation just yet
+//       glTexCoord2f(0.01, 0.02); // no animation just yet
+/*        if (start++ <10) {
             printf("tex coord is %f, %f\n", atan2f(result[1],result[0])/(2*PI*currentTexture->winding),result[2]); 
         }
+*/
       }
       glVertex3fv(triangles+(perTriangle*i) + vertexOffset + 3);
       if (currentTexture) {
         float result[3];
         matMultiply3vf(currentTexture->transformMat, triangles+(perTriangle*i) + vertexOffset + 6, result); 
 //        glTexCoord2f(atan2f(result[1], result[0])/(2*PI*currentTexture->winding), result[2]); // no animation just yet
-        glTexCoord2f(0.02, 0.02); // no animation just yet
-        if (start++ <10) {
+        float s = fmod(1,(atan2f(result[0], result[2])/(2*PI))*currentTexture->winding);
+        float t = result[1]/currentTexture->height;
+//        glTexCoord2f(0.02, 0.02); // no animation just yet
+/*        if (start++ <10) {
             printf("tex coord is %f, %f\n", atan2f(result[1],result[0])/(2*PI*currentTexture->winding),result[2]); 
         }
+*/
       }
       glVertex3fv(triangles+(perTriangle*i) + vertexOffset + 6);
     }

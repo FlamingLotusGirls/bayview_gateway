@@ -10,7 +10,7 @@
                {"name":"bronze",    "ambient":[0.329412, 0.223529, 0.027451, 1.0], "diffuse":[0.780392, 0.568627, 0.113725, 1.0], "specular":[0.992157, 0.941176, 0.807843, 1.0], "emissive":[0.0, 0.0, 0.0, 1.0], "shininess":0.21794872} ],
 
  "textures": [ {"name":"sampletexture", "filename":"images/idontexist.jpg", "opacity":1.0, "winding":1.0, "height":1024, "theta":0.0, "dTheta":0.0, "z":0.0, "dz":0.0, "rotX":0.0, "rotY":0.0, "rotZ":0.0},
-               {"name":"sampletexture1", "filename":"images/purple_blue.jpg", "opacity":1.0, "winding":1.0, "height":1024, "theta":0.0, "dTheta":0.0, "z":0.0, "dz":0.0, "rotX":0.0, "rotY":0.0, "rotZ":0.0}],
+               {"name":"sampletexture1", "filename":"images/purple_blue.jpg", "opacity":1.0, "winding":1.0, "height":20000, "theta":0.0, "dTheta":0.0, "z":0.0, "dz":0.0, "rotX":0.0, "rotY":0.0, "rotZ":0.0}],
 
  "parts": [ {"name":"arm1edge1",       "startVertex":0,    "material":"steel",      "texture":"sampleTexture"},
            {"name":"arm1_side_outer", "startVertex":3100,  "material":"steel",      "texture":"sampleTexture"},
