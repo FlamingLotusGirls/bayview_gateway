@@ -17,6 +17,7 @@ specific language governing permissions and limitations under the License. */
 #include <ctype.h>
 #include <errno.h>
 #include <jpeglib.h>
+#include <sys/time.h>
 #ifdef __APPLE__
 #include <OpenGL/CGLCurrent.h>
 #include <OpenGL/CGLTypes.h>
@@ -50,8 +51,8 @@ typedef struct {
   float transformMat[9]; // cylinder defined by z-axis, so transform into world coordinates
   double theta;           // current rotation on axis
   double dThetadt;        // radians/second to spin the transformation
-  double zOffset;          // world units/second to translate texture on local z-axis
-  double dZdt;            // how fast to move the texture, in units/second  
+  float  zOffset;          // world units/second to translate texture on local z-axis
+  float  dzdt;            // how fast to move the texture, in units/second  
   unsigned char* textureBytes;    // rgb triples. For now no alpha, no stride
 } Texture;
 
@@ -146,6 +147,16 @@ int numParts = 0;
 int numTextures = 0;
 int numMaterials = 0;
 
+static long long frameStartTicks;
+#define FRAMES_PER_SEC 20;
+long ticksPerFrame = 1000/FRAMES_PER_SEC;
+
+long long getCurTime() {
+    struct timeval tp;
+    gettimeofday(&tp, NULL);
+    return (long long) tp.tv_sec * 1000L + tp.tv_usec / 1000;
+}
+
 void initIdentityMatf(float *mat)
 {
     mat[0] = 1.0f;
@@ -202,7 +213,9 @@ int parseTexture(cJSON *textureSpec, Texture *texture)
     texture->theta    = cJSON_GetObjectItem(textureSpec, "theta")->valuedouble;
     texture->dThetadt = cJSON_GetObjectItem(textureSpec, "dTheta")->valuedouble;
     texture->zOffset  = cJSON_GetObjectItem(textureSpec, "z")->valuedouble;
-    texture->dZdt     = cJSON_GetObjectItem(textureSpec, "dZ")->valuedouble;
+    texture->dzdt     = cJSON_GetObjectItem(textureSpec, "dZ")->valuedouble;
+    
+    printf("New texture! zOffset is %f\n", texture->zOffset);
     
     //printf("opacity is %f, winding is %f, height is %d, theta is %f zOffset is %f\n", tmpTexture->opacity, tmpTexture->winding, tmpTexture->height, tmpTexture->theta, tmpTexture->zOffset); 
 
@@ -811,6 +824,9 @@ void load_stl_mesh(char* filename) {
 void render_triangles(float* triangles, int nTriangles)
 {
   Texture *currentTexture = NULL;
+  clock_t timeNow = getCurTime();
+  clock_t dt = timeNow-frameStartTicks;
+  frameStartTicks = timeNow;
  // glEnable(GL_TEXTURE_2D);
   glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_DECAL);
  
@@ -842,7 +858,7 @@ void render_triangles(float* triangles, int nTriangles)
     
     int start=0;
     
-    printf("nTriangles is %d\n", nTriangles);
+    //printf("nTriangles is %d\n", nTriangles);
     for(i = 0; i < nTriangles; i++){
       // Setup environment on part boundaries
       if (nextPart != NULL && nextPart->startIdx == i) {
@@ -853,6 +869,17 @@ void render_triangles(float* triangles, int nTriangles)
             currentTexture = nextPart->texture;
 //            printf("Using texture %s on part %s\n", currentTexture->name, nextPart->name);
             glEnable(GL_TEXTURE_2D);
+            glMatrixMode(GL_TEXTURE);
+            glLoadIdentity();
+            if (currentTexture->dzdt) {
+                float deltasecs = ((float)dt) /CLOCKS_PER_SEC*100;
+                currentTexture->zOffset -= currentTexture->dzdt * deltasecs;
+                
+                //currentTexture->zOffset = fmod(1, currentTexture->zOffset);  // !! beware!! fmod turns to NaN if 0!
+                //printf("zOffset is %f\n", currentTexture->zOffset);
+                glTranslatef(0.0f, currentTexture->zOffset, 0.0f);
+            }
+            
             //glClear(GL_COLOR_BUFFER_BIT);
             glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_DECAL);
             glBindTexture(GL_TEXTURE_2D, currentTexture->id);
@@ -892,60 +919,43 @@ void render_triangles(float* triangles, int nTriangles)
         // coordinates of a point are...  Where are my modelworld matrices?
         // map texture projection into model space. Then v is model z / texture height + animation z factor
         float result[3];
-
         matMultiply3vf(currentTexture->transformMat, triangles+(perTriangle*i) + vertexOffset, result); // should do 4x4 so I can do translation XXX
         if (i==19500) {
         /*    printf("Transform mat is %f,%f,%f,   %f, %f, %f,  %f, %f,%f\n",
                    currentTexture->transformMat[0], currentTexture->transformMat[1], currentTexture->transformMat[2],
                    currentTexture->transformMat[3], currentTexture->transformMat[4], currentTexture->transformMat[5],
                    currentTexture->transformMat[6], currentTexture->transformMat[7], currentTexture->transformMat[8]); */
-            printf("vertex is at %f %f %f, result is %f %f %f \n", 
+      /*      printf("vertex is at %f %f %f, result is %f %f %f \n", 
                    *(triangles+(perTriangle*i) + vertexOffset),
                    *(triangles+(perTriangle*i) + vertexOffset + 1),
                    *(triangles+(perTriangle*i) + vertexOffset + 2),
                    result[0],
                    result[1],
-                   result[2]);
+                   result[2]);*/
         }
         // And u is atan2f(y, x) / 2PI * f, + animation spin factor
         float s = fmod(1,(atan2f(result[0], result[2])/(2*PI))*currentTexture->winding);
         float t = result[1]/currentTexture->height;
-        if (i==19500) {
-            printf("s=%f, t=%f\n", s, t);
-        }
+       // if (i==19500) {
+       //     printf("s=%f, t=%f\n", s, t);
+       // }
         glTexCoord2f(s, t); // no animation just yet
-        //glTexCoord2f(0.01, 0.01); // no animation just yet
-/*        if (start++ <10) {
-            printf("tex coord is %f, %f\n", atan2f(result[1],result[0])/(2*PI*currentTexture->winding),result[2]); 
-        }*/
         
       }
       glVertex3fv(triangles+(perTriangle*i) + vertexOffset);
       if (currentTexture) {
         float result[3];
         matMultiply3vf(currentTexture->transformMat, triangles+(perTriangle*i) + vertexOffset + 3, result);
-//        glTexCoord2f(atan2f(result[1], result[0])/(2*PI*currentTexture->winding), result[2]); // no animation just yet
         float s = fmod(1,(atan2f(result[0], result[2])/(2*PI))*currentTexture->winding);
         float t = result[1]/currentTexture->height;
         glTexCoord2f(s, t); // no animation just yet
-//       glTexCoord2f(0.01, 0.02); // no animation just yet
-/*        if (start++ <10) {
-            printf("tex coord is %f, %f\n", atan2f(result[1],result[0])/(2*PI*currentTexture->winding),result[2]); 
-        }
-*/
       }
       glVertex3fv(triangles+(perTriangle*i) + vertexOffset + 3);
       if (currentTexture) {
         float result[3];
         matMultiply3vf(currentTexture->transformMat, triangles+(perTriangle*i) + vertexOffset + 6, result); 
-//        glTexCoord2f(atan2f(result[1], result[0])/(2*PI*currentTexture->winding), result[2]); // no animation just yet
         float s = fmod(1,(atan2f(result[0], result[2])/(2*PI))*currentTexture->winding);
         float t = result[1]/currentTexture->height;
-//        glTexCoord2f(0.02, 0.02); // no animation just yet
-/*        if (start++ <10) {
-            printf("tex coord is %f, %f\n", atan2f(result[1],result[0])/(2*PI*currentTexture->winding),result[2]); 
-        }
-*/
       }
       glVertex3fv(triangles+(perTriangle*i) + vertexOffset + 6);
     }
@@ -1191,6 +1201,8 @@ void idle() {
 
     // Show the last received frame
     display();
+  } else if (getCurTime() > frameStartTicks + ticksPerFrame) {
+    display();
   }
 }
 
@@ -1359,6 +1371,7 @@ int main(int argc, char** argv) {
   CGLSetParameter(context, kCGLCPSwapInterval, &swap_interval);
 #endif
 
+  frameStartTicks = getCurTime();
   glutMainLoop();
   return 0;
 }
