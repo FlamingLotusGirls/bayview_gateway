@@ -733,10 +733,10 @@ void load_stl_mesh(char* filename) {
       // each STL triangle is 3 normal floats, then 9 vertex floats, then a uint16.
 //      float *initialVtxPtr = ((float*)file_loc) + 3*gUseNormals;
       float max_X, max_Y, max_Z, min_X, min_Y, min_Z;
-      float offsetX = 3450;
-      float offsetY = 311;
-      float offsetZ = 3468;
-      float scale = 1.0f;
+      float offsetX = 0; //= 3450;
+      float offsetY = 0; //= 311;
+      float offsetZ = 0; //= 3468;
+      float scale = 1.0f; // XXX is this used?
       for (i = 0; i < num_triangles; i++) {
         memcpy(loc, file_loc, triangleSize*float_size);
         float *vertex_ptr = loc + 3*gUseNormals;
@@ -916,7 +916,6 @@ void render_triangles(float* triangles, int nTriangles)
       }
 
       if (currentTexture) {
-        // coordinates of a point are...  Where are my modelworld matrices?
         // map texture projection into model space. Then v is model z / texture height + animation z factor
         float result[3];
         matMultiply3vf(currentTexture->transformMat, triangles+(perTriangle*i) + vertexOffset, result); // should do 4x4 so I can do translation XXX
@@ -936,26 +935,36 @@ void render_triangles(float* triangles, int nTriangles)
         // And u is atan2f(y, x) / 2PI * f, + animation spin factor
         float s = fmod(1,(atan2f(result[0], result[2])/(2*PI))*currentTexture->winding);
         float t = result[1]/currentTexture->height;
-       // if (i==19500) {
-       //     printf("s=%f, t=%f\n", s, t);
-       // }
-        glTexCoord2f(s, t); // no animation just yet
+/*        if (i==19500) {
+            printf("x=%f, y=%f, z=%f, s=%f, t=%f\n", result[0],  result[1], result[2], s, t);
+            printf("vertex is %f,%f,%f\n", *(triangles+(perTriangle*i) + vertexOffset), *(triangles+(perTriangle*i) + vertexOffset+1),*(triangles+(perTriangle*i) + vertexOffset+2));
+        } 
+        if (i==25302) {
+            printf("25302: x=%f, z=%f, s=%f, t=%f\n", result[0], result[2], s, t);
+        } 
+*/
+        
+        glTexCoord2f(s, t);
+
         
       }
       glVertex3fv(triangles+(perTriangle*i) + vertexOffset);
+      
       if (currentTexture) {
         float result[3];
         matMultiply3vf(currentTexture->transformMat, triangles+(perTriangle*i) + vertexOffset + 3, result);
         float s = fmod(1,(atan2f(result[0], result[2])/(2*PI))*currentTexture->winding);
         float t = result[1]/currentTexture->height;
-        glTexCoord2f(s, t); // no animation just yet
+        glTexCoord2f(s, t); 
       }
       glVertex3fv(triangles+(perTriangle*i) + vertexOffset + 3);
+      
       if (currentTexture) {
         float result[3];
         matMultiply3vf(currentTexture->transformMat, triangles+(perTriangle*i) + vertexOffset + 6, result); 
         float s = fmod(1,(atan2f(result[0], result[2])/(2*PI))*currentTexture->winding);
         float t = result[1]/currentTexture->height;
+        glTexCoord2f(s, t); 
       }
       glVertex3fv(triangles+(perTriangle*i) + vertexOffset + 6);
     }
@@ -970,7 +979,7 @@ void matMultiply3vf(float *matrix, float *vertex, float *result)
 {
     result[0] = matrix[0] * vertex[0] + matrix[1] * vertex[1] + matrix[2] * vertex[2];
     result[1] = matrix[3] * vertex[0] + matrix[4] * vertex[1] + matrix[5] * vertex[2];
-    result[2] = matrix[6] * vertex[0] + matrix[7] * vertex[1] + matrix[5] * vertex[8];
+    result[2] = matrix[6] * vertex[0] + matrix[7] * vertex[1] + matrix[8] * vertex[2];
 }
 
 // read jpg file, return allocated buffer of bytes
@@ -982,7 +991,6 @@ unsigned char* readJpeg(const char *filename, long *outwidth, long *outheight) {
   printf("Attempting to read jpeg file %s\n", filename);
 
   FILE * infile;  
-//  JSAMPARRAY pJpegBuffer;
 //  int stride;
   if ((infile = fopen(filename, "rb")) == NULL) {
     fprintf(stderr, "can't open %s\n", filename);
@@ -1021,6 +1029,13 @@ unsigned char* readJpeg(const char *filename, long *outwidth, long *outheight) {
     int nLines = cinfo.output_scanline;
     (void) jpeg_read_scanlines(&cinfo, pJpegBuffer, 1);
     memcpy(buffer+(nLines*row_stride), pJpegBuffer[0], row_stride);
+    // oh joy. This is bgr rather than rgb. 
+    for (int i=0; i<cinfo.output_width; i++) { // remove some color components....
+        unsigned char *bufPtr = buffer + (nLines*row_stride) + 3*i;
+        unsigned char tmp = *bufPtr;
+        *bufPtr= *(bufPtr+2);
+        *(bufPtr+2) = tmp;
+    }
   }
 
   // exit now
@@ -1356,6 +1371,10 @@ int main(int argc, char** argv) {
   glutIgnoreKeyRepeat(1);
   glutKeyboardFunc(keyboard);
   glutIdleFunc(idle);
+  
+  GLint iUnits;
+  glGetIntegerv(GL_MAX_TEXTURE_UNITS, &iUnits);
+  printf("***CSW*** have %d texture units\n", iUnits);
 
   glEnable(GL_DEPTH_TEST);
   glEnable(GL_LIGHTING);
